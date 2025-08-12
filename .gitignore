@@ -1,0 +1,46 @@
+# Soubory s citlivými daty a lokální konfigurací
+.env
+.env.*
+!.env.example
+
+# Závislosti Node.js
+# Tato složka obsahuje všechny stažené balíčky a může být obrovská.
+# Místo toho se spoléhá na soubor package.json pro obnovení závislostí.
+nodejs-consumer/node_modules
+/node_modules
+
+# Výstupní složka pro sestavení Maven projektu
+# Obsahuje zkompilované .class soubory, .jar archivy atd.
+/target/
+
+# Logy
+*.log
+logs/
+
+# Dočasné soubory a zálohy editorů
+# Jako např. váš soubor MessageConsumerService.java.bak
+*.bak
+*~
+
+# Soubory generované IDE
+# IntelliJ IDEA
+.idea/
+*.iml
+out/
+
+# Visual Studio Code
+.vscode/
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# Soubory operačního systému
+# macOS
+.DS_Store
+# Windows
+Thumbs.db
+
+# Podezřelý soubor 'mkdir' z vašeho screenshotu
+mkdir

@@ -1,0 +1,21 @@
+{
+  "name": "kafka-consumer-nodejs",
+  "version": "1.0.0",
+  "description": "Kafka Consumer with Elastic APM",
+  "main": "consumer.js",
+  "scripts": {
+    "start": "node consumer.js",
+    "dev": "nodemon consumer.js"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4",
+    "elastic-apm-node": "^4.13.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
