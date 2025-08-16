@@ -34,16 +34,16 @@ const consumer = kafka.consumer({
 
 async function runConsumer() {
   try {
-    console.log('🚀 Starting Kafka Consumer with APM...');
+    console.log('Starting Kafka Consumer with APM...');
     
     await consumer.connect();
-    console.log('✅ Connected to Kafka');
+    console.log('Connected to Kafka');
     
     await consumer.subscribe({ 
       topic: process.env.KAFKA_TOPIC, 
       fromBeginning: false 
     });
-    console.log(`✅ Subscribed to topic: ${process.env.KAFKA_TOPIC}`);
+    console.log(`Subscribed to topic: ${process.env.KAFKA_TOPIC}`);
     
     await consumer.run({
       eachMessage: async ({ topic, partition, message }) => {
