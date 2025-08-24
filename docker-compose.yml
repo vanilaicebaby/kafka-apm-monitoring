@@ -1,61 +1,64 @@
 version: '3.8'
 services:
- elasticsearch:
-   image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-   container_name: elasticsearch
-   environment:
-     - node.name=elasticsearch
-     - cluster.name=docker-cluster
-     - discovery.type=single-node
-     - bootstrap.memory_lock=true
-     - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-     - xpack.security.enabled=false
-     - xpack.security.http.ssl.enabled=false
-   ulimits:
-     memlock:
-       soft: -1
-       hard: -1
-   volumes:
-     - esdata:/usr/share/elasticsearch/data
-   ports:
-     - "9200:9200"
-   networks:
-     - elastic
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=docker-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - elastic
 
- kibana:
-   image: docker.elastic.co/kibana/kibana:8.11.0
-   container_name: kibana
-   ports:
-     - "5601:5601"
-   environment:
-     ELASTICSEARCH_HOSTS: http://elasticsearch:9200
-   depends_on:
-     - elasticsearch
-   networks:
-     - elastic
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.fleet.agents.elasticsearch.hosts=["http://elasticsearch:9200"]
+      - xpack.fleet.agents.fleet_server.hosts=["http://fleet-server:8220"]
+      - xpack.fleet.isAirGapped=false
+    depends_on:
+      - elasticsearch
+    networks:
+      - elastic
 
- apm-server:
-   image: docker.elastic.co/apm/apm-server:7.17.15
-   container_name: apm-server
-   ports:
-     - "8200:8200"
-   command: >
-     apm-server -e
-       -E apm-server.host=0.0.0.0:8200
-       -E apm-server.rum.enabled=true
-       -E apm-server.rum.allow_origins=["*"]
-       -E output.elasticsearch.hosts=["elasticsearch:9200"]
-       -E setup.template.enabled=true
-       -E logging.level=info
-   depends_on:
-     - elasticsearch
-   networks:
-     - elastic
+  fleet-server:
+    image: docker.elastic.co/beats/elastic-agent:8.11.0
+    container_name: fleet-server
+    ports:
+      - "8220:8220"
+    environment:
+      - FLEET_SERVER_ENABLE=1
+      - FLEET_SERVER_ELASTICSEARCH_HOST=http://elasticsearch:9200
+      - FLEET_SERVER_POLICY_ID=fleet-server-policy
+      - KIBANA_FLEET_SETUP=1
+      - KIBANA_FLEET_HOST=http://kibana:5601
+      - FLEET_SERVER_INSECURE_HTTP=1
+    depends_on:
+      - elasticsearch
+      - kibana
+    networks:
+      - elastic
 
 volumes:
- esdata:
-   driver: local
+  esdata:
+    driver: local
 
 networks:
- elastic:
-   driver: bridge
+  elastic:
+    driver: bridge

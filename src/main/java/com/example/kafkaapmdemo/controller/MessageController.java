@@ -1,4 +1,4 @@
-// MessageController.java - s APM tracing
+// MessageController.java - FIXED version
 package com.example.kafkaapmdemo.controller;
 
 import co.elastic.apm.api.ElasticApm;
@@ -25,13 +25,8 @@ public class MessageController {
     
     @PostMapping("/send")
     public ResponseEntity<Map<String, Object>> sendMessage(@RequestBody Map<String, String> request) {
-        // Explicit APM transaction pro HTTP request
+        // NETVOŘTE novou transakci! Spring Boot APM agent již vytváří transakci pro HTTP requesty
         Transaction transaction = ElasticApm.currentTransaction();
-        if (transaction == null) {
-            transaction = ElasticApm.startTransaction();
-            transaction.setName("POST /api/messages/send");
-            transaction.setType("request");
-        }
         
         String requestId = UUID.randomUUID().toString();
         
@@ -43,24 +38,28 @@ public class MessageController {
             logger.info("Received HTTP request to send message - RequestId: {}, Topic: {}, Message: {}", 
                 requestId, topic, message);
             
-            // Nastav transaction labels
-            transaction.setLabel("http.method", "POST");
-            transaction.setLabel("http.url", "/api/messages/send");
-            transaction.setLabel("requestId", requestId);
-            transaction.setLabel("kafka.topic", topic);
-            transaction.setLabel("kafka.key", key);
-            transaction.setLabel("message.size", message != null ? message.length() : 0);
+            // Nastav transaction labels - POUZE pokud existuje transakce
+            if (transaction != null) {
+                transaction.setLabel("requestId", requestId);
+                transaction.setLabel("kafka.topic", topic);
+                transaction.setLabel("kafka.key", key);
+                transaction.setLabel("message.size", message != null ? message.length() : 0);
+            }
             
             if (message == null || message.trim().isEmpty()) {
-                transaction.setResult("error");
+                if (transaction != null) {
+                    transaction.setResult("error");
+                }
                 return ResponseEntity.badRequest()
                     .body(Map.of("error", "Message cannot be empty", "requestId", requestId));
             }
             
-            // Zavolej producer service (který vytvoří vlastní span)
+            // Zavolej producer service
             producerService.sendMessage(topic, key, message);
             
-            transaction.setResult("success");
+            if (transaction != null) {
+                transaction.setResult("success");
+            }
             
             return ResponseEntity.ok(Map.of(
                 "status", "success",
@@ -74,8 +73,10 @@ public class MessageController {
             logger.error("Error in sendMessage endpoint - RequestId: {}, Error: {}", 
                 requestId, e.getMessage(), e);
             
-            transaction.captureException(e);
-            transaction.setResult("error");
+            if (transaction != null) {
+                transaction.captureException(e);
+                transaction.setResult("error");
+            }
             
             return ResponseEntity.status(500)
                 .body(Map.of(
@@ -84,19 +85,16 @@ public class MessageController {
                     "requestId", requestId,
                     "timestamp", LocalDateTime.now().toString()
                 ));
-        } finally {
-            transaction.end();
         }
+        // NEUKONČUJTE transakci! Spring Boot APM agent to udělá automaticky
     }
     
     @GetMapping("/health")
     public ResponseEntity<Map<String, String>> health() {
+        // Jen přidej labely, ale nevytvářej novou transakci
         Transaction transaction = ElasticApm.currentTransaction();
         if (transaction != null) {
-            transaction.setName("GET /api/messages/health");
-            transaction.setType("request");
-            transaction.setLabel("http.method", "GET");
-            transaction.setLabel("http.url", "/api/messages/health");
+            transaction.setLabel("endpoint", "health");
         }
         
         return ResponseEntity.ok(Map.of(
@@ -111,8 +109,7 @@ public class MessageController {
     public ResponseEntity<Map<String, Object>> info() {
         Transaction transaction = ElasticApm.currentTransaction();
         if (transaction != null) {
-            transaction.setName("GET /api/messages/info");
-            transaction.setType("request");
+            transaction.setLabel("endpoint", "info");
         }
         
         return ResponseEntity.ok(Map.of(

@@ -1,4 +1,4 @@
-// src/main/java/com/example/kafkaapmdemo/config/ElasticApmConfig.java
+// ElasticApmConfig.java - SIMPLIFIED bez JMX metrik
 package com.example.kafkaapmdemo.config;
 
 import co.elastic.apm.attach.ElasticApmAttacher;
@@ -44,23 +44,23 @@ public class ElasticApmConfig {
         apmProps.put("application_packages", applicationPackages);
         apmProps.put("log_level", logLevel);
         
-        // Kafka JMX metrics - zachytíme důležité metriky
-        apmProps.put("capture_jmx_metrics", 
-            // Producer metriky
-            "object_name[kafka.producer:type=producer-metrics,client-id=*] " +
-            "attribute[batch-size-avg:metric_name=kafka.producer.batch_size_avg]," +
-            "object_name[kafka.producer:type=producer-metrics,client-id=*] " +
-            "attribute[record-send-rate:metric_name=kafka.producer.record_send_rate]," +
-            "object_name[kafka.producer:type=producer-metrics,client-id=*] " +
-            "attribute[request-latency-avg:metric_name=kafka.producer.request_latency_avg]," +
-            // Consumer metriky
-            "object_name[kafka.consumer:type=consumer-metrics,client-id=*] " +
-            "attribute[records-consumed-rate:metric_name=kafka.consumer.records_consumed_rate]," +
-            "object_name[kafka.consumer:type=consumer-metrics,client-id=*] " +
-            "attribute[fetch-latency-avg:metric_name=kafka.consumer.fetch_latency_avg]"
-        );
+        // Základní APM konfigurace BEZ JMX metrik
+        apmProps.put("capture_body", "all");
+        apmProps.put("capture_headers", "true");
+        apmProps.put("use_path_as_transaction_name", "true");
+        apmProps.put("enable_log_correlation", "true");
+        apmProps.put("trace_methods", "com.example.kafkaapmdemo.*");
+        apmProps.put("trace_methods_duration_threshold", "0ms");
         
-        ElasticApmAttacher.attach(apmProps);
-        logger.info("Elastic APM attached successfully");
+        // VYPNEME JMX metriky aby neházely chyby
+        apmProps.put("capture_jmx_metrics", "");
+        
+        try {
+            ElasticApmAttacher.attach(apmProps);
+            logger.info("Elastic APM attached successfully (without JMX metrics)");
+        } catch (Exception e) {
+            logger.error("Failed to attach Elastic APM: {}", e.getMessage(), e);
+            throw new RuntimeException("APM initialization failed", e);
+        }
     }
 }
