@@ -1,6 +1,5 @@
 com\example\kafkaapmdemo\KafkaApmDemoApplication.class
 com\example\kafkaapmdemo\config\ElasticApmConfig.class
-com\example\kafkaapmdemo\service\MessageConsumerService.class
 com\example\kafkaapmdemo\controller\MessageController.class
 com\example\kafkaapmdemo\service\MessageProducerService$1.class
 com\example\kafkaapmdemo\service\MessageProducerService.class
