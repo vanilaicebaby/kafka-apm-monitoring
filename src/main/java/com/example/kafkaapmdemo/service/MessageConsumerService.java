@@ -22,7 +22,9 @@ public class MessageConsumerService {
                        @Header(KafkaHeaders.RECEIVED_PARTITION_ID) int partition,
                        @Header(KafkaHeaders.OFFSET) long offset) {
         
-        // APM span pro consumer
+        // APM span pro consumer 
+        // activityId requestId 
+        // Trasparent
         Span span = ElasticApm.currentSpan()
             .startSpan("kafka", "consume", "consumer")
             .setName("kafka-consume-" + topic);
