@@ -1,20 +1,15 @@
-version: '3.8'
+version: '3.7'
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
     container_name: elasticsearch
     environment:
       - node.name=elasticsearch
-      - cluster.name=docker-cluster
+      - cluster.name=es-docker-cluster
       - discovery.type=single-node
       - bootstrap.memory_lock=true
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - ELASTIC_PASSWORD=changeme
-      - xpack.security.enabled=true
-      # ZMĚNA: HTTP SSL vracíme na false
-      - xpack.security.http.ssl.enabled=false
-      # ZMĚNA: Transport SSL necháváme na true, abychom prošli kontrolou
-      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.enabled=false  # <-- DŮLEŽITÉ: Vypíná hesla a SSL
     ulimits:
       memlock:
         soft: -1
@@ -26,27 +21,18 @@ services:
     networks:
       - elastic
     healthcheck:
-      # ZMĚNA: Healthcheck se vrací na http
-      test: ["CMD-SHELL", "curl -u elastic:changeme -s -f http://localhost:9200/_cluster/health || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      interval: 10s
       timeout: 10s
       retries: 5
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.11.0
+    image: docker.elastic.co/kibana/kibana:7.17.10
     container_name: kibana
     ports:
       - "5601:5601"
     environment:
-      # ZMĚNA: Kibana se připojuje zpět na http
-      - ELASTICSEARCH_HOSTS=["http://elasticsearch:9200"]
-      - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=changeme
-      # ZMĚNA: Ověřování SSL už není potřeba
-      - ELASTICSEARCH_SSL_VERIFICATIONMODE=none
-      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=a7a6311933d3503b89bc2dbc36572c33a6c10925682e591bffcab6911c06786d
-      - XPACK_SECURITY_ENCRYPTIONKEY=a_random_32_character_string_here_1
-      - XPACK_REPORTING_ENCRYPTIONKEY=a_different_random_string_here_2
+      - ELASTICSEARCH_HOSTS=["http://elasticsearch:9200"] # <-- Připojení bez hesla
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -54,31 +40,19 @@ services:
       - elastic
 
   apm-server:
-    image: docker.elastic.co/apm/apm-server:8.11.0
+    image: docker.elastic.co/apm/apm-server:7.17.10
     container_name: apm-server
     ports:
       - "8200:8200"
     environment:
-      # ZMĚNA: APM se připojuje zpět na http
-      - output.elasticsearch.hosts=["http://elasticsearch:9200"]
-      - output.elasticsearch.username=apm_system
-      - output.elasticsearch.password=changeme
-      # ZMĚNA: Ověřování SSL už není potřeba
-      - output.elasticsearch.ssl.verification_mode=none
+      - output.elasticsearch.hosts=["http://elasticsearch:9200"] # <-- Připojení bez hesla
       - apm-server.host=0.0.0.0:8200
-      - apm-server.rum.enabled=true
-      - apm-server.rum.allow_origins=["*"]
-      - apm-server.auth.anonymous.enabled=true
+      - apm-server.auth.anonymous.enabled=true # <-- Povolí anonymní přístup agentů
     depends_on:
       elasticsearch:
         condition: service_healthy
     networks:
       - elastic
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s -f http://localhost:8200/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
 
 volumes:
   esdata:
