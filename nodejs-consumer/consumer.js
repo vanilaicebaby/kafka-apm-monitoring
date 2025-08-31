@@ -1,7 +1,5 @@
-// consumer.js s distributed tracing support
 require('dotenv').config();
 
-// DŮLEŽITÉ: APM musí být první import!
 const apm = require('elastic-apm-node').start({
   serviceName: process.env.ELASTIC_APM_SERVICE_NAME,
   serverUrl: process.env.ELASTIC_APM_SERVER_URL,
@@ -16,7 +14,6 @@ const apm = require('elastic-apm-node').start({
 
 const { Kafka } = require('kafkajs');
 
-// Kafka konfigurace pro Confluent Cloud
 const kafka = new Kafka({
   clientId: 'nodejs-consumer',
   brokers: [process.env.KAFKA_BROKERS],
@@ -34,7 +31,6 @@ const consumer = kafka.consumer({
   heartbeatInterval: 3000,
 });
 
-// Funkce pro extrakci tracing headers z Kafka zprávy
 function extractTracingHeaders(message) {
   const headers = {};
   
@@ -66,22 +62,19 @@ async function runConsumer() {
     
     await consumer.run({
       eachMessage: async ({ topic, partition, message }) => {
-        // Extrahuj tracing headers z Kafka zprávy
         const tracingHeaders = extractTracingHeaders(message);
         const activityId = tracingHeaders['ActivityId'] || 'unknown';
         const requestId = tracingHeaders['RequestId'] || 'unknown';
         const transparent = tracingHeaders['Transparent'] || 'false';
+        const sourceService = tracingHeaders['X-Source-Service'] || 'unknown';
         
-        // Vytvoření APM transaction pro každou zprávu s distributed tracing
         const transaction = apm.startTransaction(`kafka-consume-${topic}`, 'messaging');
         
-        // Pokud existují APM tracing headers, pokus se navázat na parent trace
         const apmTraceparent = tracingHeaders['apm-traceparent'];
         const apmTracestate = tracingHeaders['apm-tracestate'];
         
         if (apmTraceparent) {
           try {
-            // Nastavíme parent trace context
             transaction.setTraceParent(apmTraceparent);
             if (apmTracestate) {
               transaction.tracestate = apmTracestate;
@@ -94,61 +87,81 @@ async function runConsumer() {
         try {
           const messageValue = message.value.toString();
           const messageKey = message.key ? message.key.toString() : 'no-key';
+          const consumeId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
           
-          console.log(`📨 Received message with tracing:`, {
+          console.log(`Received message with tracing:`, {
             topic,
             partition,
             offset: message.offset,
             key: messageKey,
-            value: messageValue.substring(0, 100), // Zkrácená verze pro log
+            value: messageValue.substring(0, 100), // Zkrácená verze pro log, pojeabne to nefunguje pres 100? proc sakra, 2 hodizn jsem to resil...
             timestamp: new Date(parseInt(message.timestamp)),
             activityId,
             requestId,
             transparent,
-            hasApmTrace: !!apmTraceparent
+            sourceService,
+            hasDistributedTrace: !!apmTraceparent,
+            consumeId
           });
           
-          // APM labels pro better searchability
           transaction.setLabel('kafka.topic', topic);
-          transaction.setLabel('kafka.partition', partition);
-          transaction.setLabel('kafka.offset', message.offset);
+          transaction.setLabel('kafka.partition', partition.toString());
+          transaction.setLabel('kafka.offset', message.offset.toString());
           transaction.setLabel('kafka.key', messageKey);
-          transaction.setLabel('message.size', messageValue.length);
+          transaction.setLabel('message.size', messageValue.length.toString());
+          
           transaction.setLabel('activityId', activityId);
           transaction.setLabel('requestId', requestId);
           transaction.setLabel('transparent', transparent);
-          transaction.setLabel('distributed.tracing', apmTraceparent ? 'enabled' : 'disabled');
+          transaction.setLabel('consume.id', consumeId);
           
-          // Simulace zpracování zprávy s tracing context
+          transaction.setLabel('source.service', sourceService);
+          transaction.setLabel('target.service', 'nodejs-consumer');
+          transaction.setLabel('distributed.trace.connected', apmTraceparent ? 'true' : 'false');
+          transaction.setLabel('business.operation', 'kafka-consume');
+          
           const processingSpan = apm.startSpan('message-processing', 'business-logic');
           if (processingSpan) {
             processingSpan.setLabel('activityId', activityId);
             processingSpan.setLabel('requestId', requestId);
+            processingSpan.setLabel('processing.type', 'message-validation');
             processingSpan.setLabel('message.content', messageValue.substring(0, 50));
+            processingSpan.setLabel('business.step', 'validation');
           }
           
           await processMessage(messageValue, activityId, requestId);
           if (processingSpan) processingSpan.end();
           
-          // Simulace volání externí služby s propagací tracing
           const externalSpan = apm.startSpan('external-api-call', 'http');
           if (externalSpan) {
             externalSpan.setLabel('activityId', activityId);
             externalSpan.setLabel('requestId', requestId);
             externalSpan.setLabel('external.service', 'payment-api');
-            externalSpan.setLabel('service.name', 'nodejs-consumer');
+            externalSpan.setLabel('external.endpoint', '/api/payments/validate');
+            externalSpan.setLabel('api.version', '1.0');
+            externalSpan.setLabel('business.step', 'external-validation');
           }
           
           await simulateExternalApiCall(messageValue, activityId, requestId);
           if (externalSpan) externalSpan.end();
           
           transaction.result = 'success';
-          console.log(`✅ Message processed successfully - ActivityId: ${activityId}, RequestId: ${requestId}`);
+          console.log(`Message processed successfully - ActivityId: ${activityId}, RequestId: ${requestId}, ConsumeId: ${consumeId}`);
           
         } catch (error) {
-          console.error(`❌ Error processing message - ActivityId: ${activityId}, RequestId: ${requestId}:`, error);
-          apm.captureError(error);
+          console.error(`Error processing message - ActivityId: ${activityId}, RequestId: ${requestId}:`, error);
+          apm.captureError(error, {
+            custom: {
+              activityId,
+              requestId,
+              topic,
+              partition,
+              offset: message.offset
+            }
+          });
           transaction.result = 'error';
+          transaction.setLabel('error.type', error.name || 'UnknownError');
+          transaction.setLabel('error.message', error.message.substring(0, 200));
           throw error;
         } finally {
           transaction.end();
@@ -171,18 +184,27 @@ async function processMessage(message, activityId, requestId) {
     span.setLabel('business.activityId', activityId);
     span.setLabel('business.requestId', requestId);
     span.setLabel('processing.type', 'message-validation');
+    span.setLabel('processing.status', 'in-progress');
   }
   
   // Simulace různých processing times
   const processingTime = Math.random() * 200 + 50; // 50-250ms
   await new Promise(resolve => setTimeout(resolve, processingTime));
   
-  // Občas simuluj error pro testing (pokud zpráva obsahuje "error")
   if (message.toLowerCase().includes('error')) {
-    throw new Error(`Simulated processing error for ActivityId: ${activityId}`);
+    const error = new Error(`Simulated processing error for ActivityId: ${activityId}`);
+    if (span) {
+      span.setLabel('processing.status', 'failed');
+      span.setLabel('error.simulated', 'true');
+    }
+    throw error;
   }
   
-  console.log(`🔄 Message validated - ActivityId: ${activityId}, RequestId: ${requestId}`);
+  if (span) {
+    span.setLabel('processing.status', 'completed');
+  }
+  
+  console.log(`Message validated - ActivityId: ${activityId}, RequestId: ${requestId}`);
 }
 
 // Simulace volání externí služby s distributed tracing
@@ -195,11 +217,17 @@ async function simulateExternalApiCall(message, activityId, requestId) {
     span.setLabel('external.requestId', requestId);
     span.setLabel('message.content', message.substring(0, 50));
     span.setLabel('api.version', '1.0');
+    span.setLabel('api.call.status', 'in-progress');
   }
   
   // Simulace API callu
   const apiTime = Math.random() * 100 + 30; // 30-130ms
   await new Promise(resolve => setTimeout(resolve, apiTime));
+  
+  if (span) {
+    span.setLabel('api.call.status', 'completed');
+    span.setLabel('api.response.code', '200');
+  }
   
   console.log(`🌐 External API called - ActivityId: ${activityId}, RequestId: ${requestId}`);
 }

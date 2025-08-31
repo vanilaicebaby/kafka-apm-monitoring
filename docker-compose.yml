@@ -9,7 +9,7 @@ services:
       - discovery.type=single-node
       - bootstrap.memory_lock=true
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - xpack.security.enabled=false  # <-- DŮLEŽITÉ: Vypíná hesla a SSL
+      - xpack.security.enabled=false
     ulimits:
       memlock:
         soft: -1
@@ -32,7 +32,7 @@ services:
     ports:
       - "5601:5601"
     environment:
-      - ELASTICSEARCH_HOSTS=["http://elasticsearch:9200"] # <-- Připojení bez hesla
+      - ELASTICSEARCH_HOSTS=["http://elasticsearch:9200"]
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -45,14 +45,33 @@ services:
     ports:
       - "8200:8200"
     environment:
-      - output.elasticsearch.hosts=["http://elasticsearch:9200"] # <-- Připojení bez hesla
+      - output.elasticsearch.hosts=["http://elasticsearch:9200"]
       - apm-server.host=0.0.0.0:8200
-      - apm-server.auth.anonymous.enabled=true # <-- Povolí anonymní přístup agentů
+      - apm-server.auth.anonymous.enabled=true
     depends_on:
       elasticsearch:
         condition: service_healthy
     networks:
       - elastic
+
+  # NOVÝ - Logstash pro POC
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.17.10
+    container_name: logstash
+    ports:
+      - "5044:5044"
+      - "9600:9600"  # API port pro monitoring
+    environment:
+      - "LS_JAVA_OPTS=-Xmx512m -Xms512m"
+    volumes:
+      - ./logstash/config:/usr/share/logstash/config:ro
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - elastic
+    command: logstash -f /usr/share/logstash/pipeline/kafka-headers.conf
 
 volumes:
   esdata:

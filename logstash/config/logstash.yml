@@ -1,0 +1,23 @@
+# Logstash hlavní konfigurace pro POC
+http.host: "0.0.0.0"
+http.port: 9600
+
+# Log level
+log.level: info
+path.logs: /usr/share/logstash/logs
+
+# Pipeline nastavení
+pipeline.workers: 1
+pipeline.batch.size: 125
+pipeline.batch.delay: 50
+
+# Monitoring
+monitoring.enabled: true
+monitoring.elasticsearch.hosts: ["http://elasticsearch:9200"]
+
+# JVM heap
+config.reload.automatic: true
+config.reload.interval: 3s
+
+# Dead letter queue
+dead_letter_queue.enable: false

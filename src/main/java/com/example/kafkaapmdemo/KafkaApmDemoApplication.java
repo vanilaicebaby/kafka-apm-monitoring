@@ -1,4 +1,3 @@
-// src/main/java/com/example/kafkaapmdemo/KafkaApmDemoApplication.java
 package com.example.kafkaapmdemo;
 
 import org.springframework.boot.SpringApplication;

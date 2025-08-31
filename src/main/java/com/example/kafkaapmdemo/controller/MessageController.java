@@ -24,70 +24,77 @@ public class MessageController {
     
     @PostMapping("/send")
     public ResponseEntity<Map<String, Object>> sendMessage(@RequestBody Map<String, String> request) {
-        // APM automaticky vytváří transakci pro HTTP requesty
         Transaction transaction = ElasticApm.currentTransaction();
         
-        String requestId = UUID.randomUUID().toString();
+        String httpRequestId = UUID.randomUUID().toString();
         
         try {
             String message = request.get("message");
             String topic = request.getOrDefault("topic", "cards");
             String key = request.getOrDefault("key", "default-key");
             
-            logger.info("Processing message send request - RequestId: {}, Topic: {}, Key: {}", 
-                requestId, topic, key);
+            logger.info("Processing HTTP message send request - HttpRequestId: {}, Topic: {}, Key: {}", 
+                httpRequestId, topic, key);
             
-            // Přidej metadata do transakce
             if (transaction != null) {
                 transaction.setName("POST /api/messages/send");
                 transaction.setType("request");
-                transaction.addLabel("requestId", requestId);
-                transaction.addLabel("kafka.topic", topic);
-                transaction.addLabel("kafka.key", key);
+                // Labels
+                transaction.addLabel("http.requestId", httpRequestId);
+                transaction.addLabel("http.endpoint", "/api/messages/send");
+                transaction.addLabel("http.method", "POST");
+                transaction.addLabel("kafka.target.topic", topic);
+                transaction.addLabel("kafka.target.key", key);
                 transaction.addLabel("message.length", message != null ? message.length() : 0);
+                transaction.addLabel("business.operation", "message-send");
+                transaction.addLabel("service.name", "kafka-producer-java");
+                transaction.addLabel("service.component", "http-api");
             }
             
             if (message == null || message.trim().isEmpty()) {
-                logger.warn("Empty message received - RequestId: {}", requestId);
+                logger.warn("Empty message received - HttpRequestId: {}", httpRequestId);
                 if (transaction != null) {
                     transaction.setResult("error");
                     transaction.addLabel("error.type", "validation_error");
+                    transaction.addLabel("error.reason", "empty_message");
                 }
                 return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Message cannot be empty", "requestId", requestId));
+                    .body(Map.of("error", "Message cannot be empty", "httpRequestId", httpRequestId));
             }
             
-            // Zavolej producer service
             producerService.sendMessage(topic, key, message);
             
-            logger.info("Message sent successfully - RequestId: {}", requestId);
+            logger.info("Message sent successfully - HttpRequestId: {}", httpRequestId);
             if (transaction != null) {
                 transaction.setResult("success");
+                transaction.addLabel("processing.status", "completed");
             }
             
             return ResponseEntity.ok(Map.of(
                 "status", "success",
                 "message", "Message sent to topic: " + topic,
                 "key", key,
-                "requestId", requestId,
+                "httpRequestId", httpRequestId,
                 "timestamp", LocalDateTime.now().toString()
             ));
             
         } catch (Exception e) {
-            logger.error("Error processing message send request - RequestId: {}, Error: {}", 
-                requestId, e.getMessage(), e);
+            logger.error("Error processing HTTP message send request - HttpRequestId: {}, Error: {}", 
+                httpRequestId, e.getMessage(), e);
             
             if (transaction != null) {
                 transaction.captureException(e);
                 transaction.setResult("error");
                 transaction.addLabel("error.type", "processing_error");
+                transaction.addLabel("error.message", e.getMessage());
+                transaction.addLabel("processing.status", "failed");
             }
             
             return ResponseEntity.status(500)
                 .body(Map.of(
                     "status", "error",
                     "error", e.getMessage(),
-                    "requestId", requestId,
+                    "httpRequestId", httpRequestId,
                     "timestamp", LocalDateTime.now().toString()
                 ));
         }
@@ -100,6 +107,8 @@ public class MessageController {
             transaction.setName("GET /api/messages/health");
             transaction.setType("request");
             transaction.addLabel("endpoint", "health");
+            transaction.addLabel("http.method", "GET");
+            transaction.addLabel("business.operation", "health-check");
         }
         
         logger.info("Health check requested");
@@ -119,6 +128,8 @@ public class MessageController {
             transaction.setName("GET /api/messages/info");
             transaction.setType("request");
             transaction.addLabel("endpoint", "info");
+            transaction.addLabel("http.method", "GET");
+            transaction.addLabel("business.operation", "service-info");
         }
         
         logger.info("Info endpoint requested");
