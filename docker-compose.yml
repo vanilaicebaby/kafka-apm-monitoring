@@ -56,7 +56,7 @@ services:
 
   # NOVÝ - Logstash pro POC
   logstash:
-    image: docker.elastic.co/logstash/logstash:7.17.10
+    image: docker.elastic.co/logstash/logstash:8.15.0
     container_name: logstash
     ports:
       - "5044:5044"
